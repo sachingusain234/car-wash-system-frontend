@@ -1,0 +1,4 @@
+/* Dashboard component styles */
+:host {
+  display: block;
+}

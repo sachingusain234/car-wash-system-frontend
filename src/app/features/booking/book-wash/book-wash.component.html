@@ -1,0 +1,260 @@
+<div class="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-xl mx-auto">
+
+    <!-- Top Navigation / Back -->
+    <div class="mb-4">
+      <a routerLink="/dashboard" class="text-sm text-blue-600 hover:underline inline-flex items-center space-x-1">
+        <span>&larr; Back to Dashboard</span>
+      </a>
+    </div>
+
+    <!-- Main Card -->
+    <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6 sm:p-8">
+      
+      <!-- Header -->
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Book a Car Wash</h1>
+        <p class="text-sm text-gray-500 mt-1">Select your preferred washer and wash package.</p>
+      </div>
+
+      <!-- Alerts -->
+      @if (errorMessage()) {
+        <div class="mb-4 p-3 rounded bg-red-50 border border-red-200 text-red-700 text-sm">
+          {{ errorMessage() }}
+        </div>
+      }
+
+      @if (successMessage()) {
+        <div class="mb-4 p-3 rounded bg-green-50 border border-green-200 text-green-700 text-sm">
+          {{ successMessage() }}
+        </div>
+      }
+
+      <!-- Form -->
+      <form [formGroup]="bookingForm" (ngSubmit)="onSubmit()" class="space-y-4">
+
+        <!-- 1. Select Washer (Fetched from Backend with Name & Ratings) -->
+        <div>
+          <label for="washerId" class="block text-sm font-medium text-gray-700 mb-1">
+            Choose Washer <span class="text-red-500">*</span>
+          </label>
+
+          @if (isLoading()) {
+            <div class="text-xs text-gray-500 py-2">Loading washers and packages...</div>
+          } @else {
+            <select
+              id="washerId"
+              formControlName="washerId"
+              class="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              [ngClass]="{
+                'border-red-500': bookingForm.get('washerId')?.touched && bookingForm.get('washerId')?.invalid,
+                'border-gray-300': !bookingForm.get('washerId')?.touched || bookingForm.get('washerId')?.valid
+              }"
+            >
+              <option value="" disabled>-- Select a Washer --</option>
+              @for (washer of washers(); track washer.id) {
+                <option [value]="washer.id">
+                  {{ washer.name }} (⭐ {{ washer.rating || washer.ratings || '5.0' }}) {{ washer.available === false ? '- Busy' : '- Available' }}
+                </option>
+              }
+            </select>
+          }
+
+          @if (bookingForm.get('washerId')?.touched && bookingForm.get('washerId')?.errors) {
+            <p class="text-xs text-red-600 mt-1">Please select an assigned washer.</p>
+          }
+
+          @if (getSelectedWasher(); as selectedWasher) {
+            <div class="mt-1.5 text-xs text-gray-600 flex items-center gap-2">
+              <span class="inline-flex items-center text-amber-600 font-semibold">
+                ⭐ {{ selectedWasher.rating || selectedWasher.ratings || '5.0' }} / 5.0
+              </span>
+              <span>•</span>
+              <span [class.text-green-600]="selectedWasher.available !== false" [class.text-amber-600]="selectedWasher.available === false">
+                {{ selectedWasher.available === false ? 'Busy' : 'Available for service' }}
+              </span>
+            </div>
+          }
+        </div>
+
+        <!-- 2. Select Package (Fetched from Backend with Price & Details) -->
+        <div>
+          <label for="packageId" class="block text-sm font-medium text-gray-700 mb-1">
+            Wash Package <span class="text-red-500">*</span>
+          </label>
+
+          @if (isLoading()) {
+            <div class="text-xs text-gray-500 py-2">Loading packages...</div>
+          } @else {
+            <select
+              id="packageId"
+              formControlName="packageId"
+              (change)="onPackageChange($event)"
+              class="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              [ngClass]="{
+                'border-red-500': bookingForm.get('packageId')?.touched && bookingForm.get('packageId')?.invalid,
+                'border-gray-300': !bookingForm.get('packageId')?.touched || bookingForm.get('packageId')?.valid
+              }"
+            >
+              <option value="" disabled>-- Select a Package --</option>
+              @for (pkg of packages(); track pkg.id) {
+                <option [value]="pkg.id">
+                  {{ pkg.name }} @if (pkg.price) { - ${{ pkg.price }} }
+                </option>
+              }
+            </select>
+          }
+
+          @if (bookingForm.get('packageId')?.touched && bookingForm.get('packageId')?.errors) {
+            <p class="text-xs text-red-600 mt-1">Please select a package.</p>
+          }
+
+          <!-- Selected Package Info Box -->
+          @if (getSelectedPackage(); as selectedPkg) {
+            <div class="mt-2 p-2.5 bg-blue-50 border border-blue-100 rounded-md text-xs text-blue-900">
+              <div class="flex justify-between font-semibold">
+                <span>{{ selectedPkg.name }}</span>
+                @if (selectedPkg.price) {
+                  <span>${{ selectedPkg.price }}</span>
+                }
+              </div>
+              @if (selectedPkg.description) {
+                <p class="text-gray-600 mt-0.5">{{ selectedPkg.description }}</p>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- 3. Vehicle ID & Wash Type -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label for="vehicleId" class="block text-sm font-medium text-gray-700 mb-1">
+              Vehicle ID / Plate <span class="text-red-500">*</span>
+            </label>
+            <input
+              id="vehicleId"
+              type="text"
+              formControlName="vehicleId"
+              placeholder="e.g. DL-04-1234 or 101"
+              class="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              [ngClass]="{
+                'border-red-500': bookingForm.get('vehicleId')?.touched && bookingForm.get('vehicleId')?.invalid,
+                'border-gray-300': !bookingForm.get('vehicleId')?.touched || bookingForm.get('vehicleId')?.valid
+              }"
+            />
+            @if (bookingForm.get('vehicleId')?.touched && bookingForm.get('vehicleId')?.errors) {
+              <p class="text-xs text-red-600 mt-1">Vehicle ID is required.</p>
+            }
+          </div>
+
+          <div>
+            <label for="washType" class="block text-sm font-medium text-gray-700 mb-1">
+              Wash Type <span class="text-red-500">*</span>
+            </label>
+            <input
+              id="washType"
+              type="text"
+              formControlName="washType"
+              placeholder="e.g. Standard Wash"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        </div>
+
+        <!-- 4. Scheduled Date & Start Time -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label for="scheculedDate" class="block text-sm font-medium text-gray-700 mb-1">
+              Scheduled Date <span class="text-red-500">*</span>
+            </label>
+            <input
+              id="scheculedDate"
+              type="date"
+              [min]="today"
+              formControlName="scheculedDate"
+              class="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              [ngClass]="{
+                'border-red-500': bookingForm.get('scheculedDate')?.touched && bookingForm.get('scheculedDate')?.invalid,
+                'border-gray-300': !bookingForm.get('scheculedDate')?.touched || bookingForm.get('scheculedDate')?.valid
+              }"
+            />
+            @if (bookingForm.get('scheculedDate')?.touched && bookingForm.get('scheculedDate')?.errors) {
+              <p class="text-xs text-red-600 mt-1">Scheduled date is required.</p>
+            }
+          </div>
+
+          <div>
+            <label for="startTime" class="block text-sm font-medium text-gray-700 mb-1">
+              Start Time (LocalTime) <span class="text-red-500">*</span>
+            </label>
+            <input
+              id="startTime"
+              type="time"
+              formControlName="startTime"
+              class="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              [ngClass]="{
+                'border-red-500': bookingForm.get('startTime')?.touched && bookingForm.get('startTime')?.invalid,
+                'border-gray-300': !bookingForm.get('startTime')?.touched || bookingForm.get('startTime')?.valid
+              }"
+            />
+            @if (bookingForm.get('startTime')?.touched && bookingForm.get('startTime')?.errors) {
+              <p class="text-xs text-red-600 mt-1">Start time is required.</p>
+            }
+          </div>
+        </div>
+
+        <!-- 5. Location -->
+        <div>
+          <label for="location" class="block text-sm font-medium text-gray-700 mb-1">
+            Service Location <span class="text-red-500">*</span>
+          </label>
+          <input
+            id="location"
+            type="text"
+            formControlName="location"
+            placeholder="e.g. 123 Main St, Apartment 4B"
+            class="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            [ngClass]="{
+              'border-red-500': bookingForm.get('location')?.touched && bookingForm.get('location')?.invalid,
+              'border-gray-300': !bookingForm.get('location')?.touched || bookingForm.get('location')?.valid
+            }"
+          />
+          @if (bookingForm.get('location')?.touched && bookingForm.get('location')?.errors) {
+            <p class="text-xs text-red-600 mt-1">Location is required.</p>
+          }
+        </div>
+
+        <!-- 6. Notes -->
+        <div>
+          <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">
+            Notes / Instructions <span class="text-gray-400 text-xs font-normal">(Optional)</span>
+          </label>
+          <textarea
+            id="notes"
+            rows="2"
+            formControlName="notes"
+            placeholder="e.g. Call upon arrival or focus on wheels"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          ></textarea>
+        </div>
+
+        <!-- Submit Button with Razorpay branding -->
+        <button
+          type="submit"
+          [disabled]="isSubmitting() || isProcessingPayment() || isLoading()"
+          class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md text-sm transition disabled:opacity-50 cursor-pointer mt-4 flex items-center justify-center space-x-2"
+        >
+          @if (isProcessingPayment()) {
+            <span>Opening Razorpay Checkout...</span>
+          } @else if (isSubmitting()) {
+            <span>Confirming Booking...</span>
+          } @else {
+            <span>💳 Pay ₹{{ getSelectedPackage()?.price || 499 }} & Confirm Booking</span>
+          }
+        </button>
+
+      </form>
+
+    </div>
+  </div>
+</div>
