@@ -1,10 +1,10 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { BookingService } from '../../core/services/booking.service';
-import { BookingResponse, BookingStatus, ReviewRequest } from '../../core/models/booking.models';
+import { AdminDashboardStats, AdminUserSummary, BookingResponse, BookingStatus, ReviewRequest } from '../../core/models/booking.models';
 
 @Component({
   selector: 'app-dashboard',
@@ -19,8 +19,25 @@ export class DashboardComponent implements OnInit {
   private readonly router = inject(Router);
 
   readonly bookings = signal<BookingResponse[]>([]);
+  readonly adminStats = signal<AdminDashboardStats | null>(null);
+  readonly adminUsers = signal<AdminUserSummary[]>([]);
   readonly isLoading = signal(true);
+  readonly isRefreshing = signal(false);
   readonly actionMessage = signal<string | null>(null);
+
+  // Computed booking statistics (derived from customer bookings)
+  readonly totalCount = computed(() => this.bookings().length);
+  readonly pendingCount = computed(() =>
+    this.bookings().filter((b) => (b.status || '').toUpperCase() === 'PENDING').length
+  );
+  readonly inProgressCount = computed(() =>
+    this.bookings().filter((b) =>
+      ['ACCEPTED', 'IN_PROGRESS', 'CONFIRMED', 'BOOKED'].includes((b.status || '').toUpperCase())
+    ).length
+  );
+  readonly completedCount = computed(() =>
+    this.bookings().filter((b) => (b.status || '').toUpperCase() === 'COMPLETED').length
+  );
 
   // Review modal state
   readonly showReviewModal = signal(false);
@@ -38,17 +55,62 @@ export class DashboardComponent implements OnInit {
     return !role || role.toUpperCase() === 'CUSTOMER';
   }
 
-  loadBookings(): void {
-    this.isLoading.set(true);
+  isAdmin(): boolean {
+    return (this.authService.userRole()?.toUpperCase() || '') === 'ADMIN';
+  }
+
+  loadBookings(isManualRefresh = false): void {
+    if (isManualRefresh) {
+      this.isRefreshing.set(true);
+    } else {
+      this.isLoading.set(true);
+    }
+
     const currentUser = this.authService.currentUser();
+
+    const role = this.authService.userRole()?.toUpperCase();
+
+    if (role === 'ADMIN') {
+      this.bookingService.getAdminDashboard().subscribe({
+        next: (stats) => {
+          this.adminStats.set(stats);
+          this.isLoading.set(false);
+          this.isRefreshing.set(false);
+        },
+        error: (err) => {
+          console.error('Failed to load admin dashboard:', err);
+          this.isLoading.set(false);
+          this.isRefreshing.set(false);
+        }
+      });
+
+      this.bookingService.getAdminUsers().subscribe({
+        next: (users) => {
+          this.adminUsers.set(users);
+        },
+        error: (err) => {
+          console.error('Failed to load admin users:', err);
+        }
+      });
+      return;
+    }
 
     if (this.isCustomer()) {
       this.bookingService.getCustomerBookings().subscribe({
         next: (data) => {
           this.bookings.set(data);
           this.isLoading.set(false);
+          this.isRefreshing.set(false);
+          if (isManualRefresh) {
+            this.actionMessage.set(`Bookings updated. Found ${data.length} booking(s).`);
+            setTimeout(() => this.actionMessage.set(null), 3000);
+          }
         },
-        error: () => this.isLoading.set(false)
+        error: (err) => {
+          console.error('Failed to load bookings:', err);
+          this.isLoading.set(false);
+          this.isRefreshing.set(false);
+        }
       });
     } else {
       // Washer view
@@ -56,9 +118,68 @@ export class DashboardComponent implements OnInit {
         next: (data) => {
           this.bookings.set(data);
           this.isLoading.set(false);
+          this.isRefreshing.set(false);
         },
-        error: () => this.isLoading.set(false)
+        error: (err) => {
+          console.error('Failed to load washer jobs:', err);
+          this.isLoading.set(false);
+          this.isRefreshing.set(false);
+        }
       });
+    }
+  }
+
+  refreshBookings(): void {
+    this.loadBookings(true);
+  }
+
+  getStatusBadge(rawStatus?: string | null): { label: string; bg: string; text: string; dot: string } {
+    const status = (rawStatus || 'PENDING').toUpperCase();
+    switch (status) {
+      case 'PENDING':
+        return {
+          label: 'Pending Washer',
+          bg: 'bg-amber-50 border-amber-200',
+          text: 'text-amber-800',
+          dot: 'bg-amber-400'
+        };
+      case 'ACCEPTED':
+      case 'CONFIRMED':
+      case 'BOOKED':
+        return {
+          label: 'Confirmed',
+          bg: 'bg-blue-50 border-blue-200',
+          text: 'text-blue-800',
+          dot: 'bg-blue-500'
+        };
+      case 'IN_PROGRESS':
+        return {
+          label: 'Wash In Progress',
+          bg: 'bg-indigo-50 border-indigo-200',
+          text: 'text-indigo-800',
+          dot: 'bg-indigo-500'
+        };
+      case 'COMPLETED':
+        return {
+          label: 'Completed',
+          bg: 'bg-emerald-50 border-emerald-200',
+          text: 'text-emerald-800',
+          dot: 'bg-emerald-500'
+        };
+      case 'CANCELLED':
+        return {
+          label: 'Cancelled',
+          bg: 'bg-red-50 border-red-200',
+          text: 'text-red-800',
+          dot: 'bg-red-400'
+        };
+      default:
+        return {
+          label: status,
+          bg: 'bg-gray-50 border-gray-200',
+          text: 'text-gray-800',
+          dot: 'bg-gray-400'
+        };
     }
   }
 
@@ -66,7 +187,7 @@ export class DashboardComponent implements OnInit {
   acceptBooking(booking: BookingResponse): void {
     const id = booking.id || booking.bookingId;
     if (!id) return;
-    this.bookingService.updateBookingStatus(id, 'ACCEPTED').subscribe({
+    this.bookingService.acceptBooking(id).subscribe({
       next: () => {
         this.actionMessage.set(`Booking #${id} accepted!`);
         this.loadBookings();
@@ -78,7 +199,7 @@ export class DashboardComponent implements OnInit {
   startService(booking: BookingResponse): void {
     const id = booking.id || booking.bookingId;
     if (!id) return;
-    this.bookingService.updateBookingStatus(id, 'IN_PROGRESS').subscribe({
+    this.bookingService.startBooking(id).subscribe({
       next: () => {
         this.actionMessage.set(`Wash service started for booking #${id}.`);
         this.loadBookings();
@@ -90,7 +211,7 @@ export class DashboardComponent implements OnInit {
   finishService(booking: BookingResponse): void {
     const id = booking.id || booking.bookingId;
     if (!id) return;
-    this.bookingService.updateBookingStatus(id, 'COMPLETED').subscribe({
+    this.bookingService.completeBooking(id).subscribe({
       next: () => {
         this.actionMessage.set(`Wash service completed for booking #${id}!`);
         this.loadBookings();

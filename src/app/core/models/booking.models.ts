@@ -5,8 +5,9 @@ export interface Washer {
   name: string;
   email?: string;
   phone?: string;
-  rating?: number;
-  ratings?: number;
+  rating?: number;         // Static rating from backend user record
+  ratings?: number;        // Alias used by some backends
+  averageRating?: number | null; // Fetched from avg-rating API endpoint (null = no ratings yet)
   available?: boolean;
 }
 
@@ -21,10 +22,10 @@ export interface WashPackage {
 export interface BookingRequest {
   id?: string | number;
   vehicleId: string | number;
-  washerId: string | number;
-  packageId: string | number;
+  washerId?: string | number;
+  packageId?: string | number;
   bookingDate: string;    // Format: YYYY-MM-DD
-  scheculedDate: string;  // Format: YYYY-MM-DD
+  scheduledDate?: string; // Format: YYYY-MM-DD
   location: string;
   notes?: string;
   washType: string;       // e.g. Basic Wash, Standard Wash, Deluxe Wash, Full Detailing
@@ -32,7 +33,7 @@ export interface BookingRequest {
   status?: BookingStatus | string;
   amount?: number;
   paymentId?: string;
-  paymentStatus?: 'PENDING' | 'PAID' | 'FAILED';
+  paymentStatus?: 'PENDING' | 'PAID' | 'FAILED' | string;
 }
 
 export interface BookingResponse {
@@ -42,7 +43,8 @@ export interface BookingResponse {
   washerId?: string | number;
   packageId?: string | number;
   bookingDate?: string;
-  scheculedDate?: string;
+  scheduledDate?: string;
+  scheculedDate?: string; // compatibility with older backend payloads
   location?: string;
   notes?: string;
   washType?: string;
@@ -50,7 +52,7 @@ export interface BookingResponse {
   status?: BookingStatus | string;
   amount?: number;
   paymentId?: string;
-  paymentStatus?: 'PENDING' | 'PAID' | 'FAILED';
+  paymentStatus?: 'PENDING' | 'PAID' | 'FAILED' | string;
   washerName?: string;
   packageName?: string;
   customerName?: string;
@@ -76,6 +78,25 @@ export interface ReviewResponse {
   message?: string;
 }
 
+export interface AdminDashboardStats {
+  totalCustomers?: number;
+  totalWashers?: number;
+  totalRevenue?: number;
+  customers?: number;
+  washers?: number;
+  revenue?: number;
+  message?: string;
+}
+
+export interface AdminUserSummary {
+  id?: string | number;
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  available?: boolean;
+}
+
 export interface RazorpayOptions {
   key: string;
   amount: number; // In paise (e.g. 5000 = Rs 50)
@@ -96,4 +117,41 @@ export interface RazorpayOptions {
   modal?: {
     ondismiss?: () => void;
   };
+}
+
+/** Sent to POST api/payments/create-order */
+export interface CreateOrderRequest {
+  bookingId: string | number;
+  paymentMethod: string;
+  amount?: number;
+  currency?: string;
+}
+
+/** Response from POST api/payments/create-order */
+export interface CreateOrderResponse {
+  orderId?: string;
+  order_id?: string;  // Some backends return snake_case
+  id?: string;        // Razorpay's raw order id field
+  amount?: number;    // in paise
+  currency?: string;
+  status?: string;
+}
+
+/** Sent to POST api/payments/verify */
+export interface PaymentVerifyRequest {
+  razorpayorderid: string;
+  razorpaypaymentid: string;
+  razorpaysignature: string;
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
+  razorpay_signature?: string;
+}
+
+/** Response from POST api/payments/verify */
+export interface PaymentVerifyResponse {
+  success?: boolean;
+  verified?: boolean;
+  status?: string;
+  message?: string;
+  paymentId?: string;
 }

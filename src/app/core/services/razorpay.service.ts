@@ -24,24 +24,37 @@ export class RazorpayService {
         resolve(true);
       };
       script.onerror = () => {
-        console.warn('Razorpay SDK failed to load. Fallback simulation available.');
+        console.warn('Razorpay SDK failed to load.');
         resolve(false);
       };
       document.body.appendChild(script);
     });
   }
 
-  pay(options: {
-    amount: number; // in INR rupees
-    description: string;
-    customerName: string;
-    customerEmail: string;
-    customerPhone: string;
-  }): Promise<{ paymentId: string; status: 'PAID' }> {
+  /**
+   * Opens Razorpay checkout modal.
+   * @param options Payment details
+   * @param orderId  The order_id returned by api/payments/create-order (required for signature verification)
+   * @returns razorpay_payment_id, razorpay_order_id, razorpay_signature — all needed for api/payments/verify
+   */
+  pay(
+    options: {
+      amount: number;       // in INR rupees
+      description: string;
+      customerName: string;
+      customerEmail: string;
+      customerPhone: string;
+    },
+    orderId?: string
+  ): Promise<{
+    paymentId: string;
+    orderId: string;
+    signature: string;
+    status: 'PAID';
+  }> {
     return new Promise(async (resolve, reject) => {
       const loaded = await this.loadRazorpayScript();
 
-      // If Razorpay SDK loaded and is available
       if (loaded && typeof Razorpay !== 'undefined') {
         const razorpayOptions: RazorpayOptions = {
           key: environment.razorpayKey,
@@ -49,6 +62,7 @@ export class RazorpayService {
           currency: 'INR',
           name: 'CarWash Hub',
           description: options.description,
+          order_id: orderId,  // attach server-side order id (eliminates 401 errors)
           prefill: {
             name: options.customerName,
             email: options.customerEmail,
@@ -58,8 +72,11 @@ export class RazorpayService {
             color: '#2563eb'
           },
           handler: (response: any) => {
+            // Razorpay provides all 3 fields needed for backend signature verification
             resolve({
               paymentId: response.razorpay_payment_id || `pay_${Date.now()}`,
+              orderId: response.razorpay_order_id || orderId || `order_${Date.now()}`,
+              signature: response.razorpay_signature || '',
               status: 'PAID'
             });
           },
@@ -75,17 +92,19 @@ export class RazorpayService {
           rzp.open();
           return;
         } catch (err) {
-          console.warn('Could not launch Razorpay window, using fallback test simulator:', err);
+          console.warn('Could not launch Razorpay window, using fallback:', err);
         }
       }
 
-      // Simulated sandbox fallback if internet checkout script is unavailable
+      // Simulated fallback if Razorpay SDK is unavailable (no internet / dev mode)
       const proceed = confirm(
         `[Razorpay Checkout Simulator]\n\nPay ₹${options.amount} for "${options.description}"?\n\nClick OK to simulate successful payment, or Cancel to abort.`
       );
       if (proceed) {
         resolve({
           paymentId: `sim_pay_${Date.now()}`,
+          orderId: orderId || `sim_order_${Date.now()}`,
+          signature: `sim_sig_${Date.now()}`,
           status: 'PAID'
         });
       } else {
